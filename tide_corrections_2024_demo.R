@@ -67,7 +67,7 @@ latlong_2024 <- gps_clean %>%
   mutate(clock = ymd_hms(paste(cal, clock)) - hours(7), dt_gps=round_date(clock, unit="minute"))%>%  #note that lubridate has functionality for this in the general as.POSIXct where tz= will AUTOMATICALLY do the time change conversions for you, this works hard coded only because data are only from PST
   select(-plus, -cal, -clock, -ident, -date)
 
-write.csv(latlong_2024, './outputs/lat_long_2024.csv')
+#write.csv(latlong_2024, './outputs/lat_long_2024.csv')
 
 #################
 # Next, load raw min/max depth data entered from field datasheets
@@ -278,51 +278,45 @@ secondary_tide_dtcheck <- left_join(survey_windows_2024, secondary_dts, by = c('
 #
 
 #subset min max data by primary tide station
-minmax_seattle <- minmax_2024 %>% subset(pr_tide == 'seattle')
-minmax_tacoma <- minmax_2024 %>% subset(pr_tide == 'tacoma')
-minmax_porttownsend <- minmax_2024 %>% subset(pr_tide == 'porttownsend')
-minmax_portangeles <- minmax_2024 %>% subset(pr_tide == 'portangeles')
-minmax_cherrypoint <- minmax_2024 %>% subset(pr_tide == 'cherrypoint')
-minmax_fridayharbor <- minmax_2024 %>% subset(pr_tide == 'fridayharbor')
 
-minmax_seattle <- as.data.table(minmax_seattle)
-minmax_tacoma <- as.data.table(minmax_tacoma)
-minmax_porttownsend <- as.data.table(minmax_porttownsend)
-minmax_portangeles <- as.data.table(minmax_portangeles)
-minmax_cherrypoint <- as.data.table(minmax_cherrypoint)
-minmax_firdayharbor <- as.data.table(minmax_fridayharbor)
+# GEM 2025-05-28: looped/functioned from original section
 
-#subset verified tide data by primary tide station
-tides_seattle <- verified_tides_clean  %>% subset(tide_site == 'seattle')
-tides_tacoma <- verified_tides_clean  %>% subset(tide_site == 'tacoma')
-tides_porttownsend <- verified_tides_clean  %>% subset(tide_site == 'porttownsend')
-tides_portangeles <- verified_tides_clean  %>% subset(tide_site == 'portangeles')
-tides_cherrypoint <- verified_tides_clean  %>% subset(tide_site == 'cherrypoint')
-tides_fridayharbor <- verified_tides_clean  %>% subset(tide_site == 'fridayharbor')
+get_min_max_data_by_tide_station <- function(minmaxdf, pr_tide_station, verified_tides_df){
+  
+  # subset minmax df by pr tide station
+  minmax_station <- as.data.table(
+    minmaxdf %>% subset(pr_tide == pr_tide_station))
+  
+  # subset verified tide data by primary tide station 
+  tides_station <- as.data.table(
+    verified_tides_df %>% subset(tide_site == pr_tide_station))
+  
+  # match primary tide times to depth survey times by CLOSEST time
+  tide_match_station <- tides_station[minmax_station, on='dt', roll='nearest']
+  
+  return(tide_match_station)
+}
 
-tides_seattle <- as.data.table(tides_seattle)
-tides_tacoma <- as.data.table(tides_tacoma)
-tides_porttownsend <- as.data.table(tides_porttownsend)
-tides_portangeles <- as.data.table(tides_portangeles)
-tides_cherrypoint <- as.data.table(tides_cherrypoint)
-tides_fridayharbor <- as.data.table(tides_fridayharbor)
+# create list of tide stations
+pr_tide_stations = list('seattle', 'tacoma', 'porttownsend', 'portangeles', 'cherrypoint', 'fridayharbor')
 
+# create empty results list
+tide_match_dfs <- list()
 
-# These three lines match primary tide times to depth survey times by CLOSEST time
-
-tide_match_seattle <- tides_seattle[minmax_seattle, on='dt', roll='nearest']
-tide_match_tacoma <- tides_tacoma[minmax_tacoma, on='dt', roll='nearest']
-tide_match_porttownsend <- tides_porttownsend[minmax_porttownsend, on='dt', roll='nearest']
-tide_match_portangeles <- tides_portangeles[minmax_portangeles, on='dt', roll='nearest']
-tide_match_cherrypoint <- tides_cherrypoint[minmax_cherrypoint, on='dt', roll='nearest']
-tide_match_fridayharbor <- tides_fridayharbor[minmax_fridayharbor, on='dt', roll='nearest']
+# apply function in a loop
+for (i in pr_tide_stations) {
+  tide_match <- get_min_max_data_by_tide_station(minmaxdf = minmax_2024,
+                                   pr_tide_station = i,
+                                   verified_tides_df = verified_tides_clean)
+  tide_match_dfs[[i]] <- tide_match
+}
 
 # smoosh em all together
-minmax_2024_primary <- bind_rows(tide_match_seattle, tide_match_tacoma, tide_match_porttownsend, tide_match_portangeles, 
-                                 tide_match_cherrypoint, tide_match_fridayharbor) %>%
+minmax_2024_primary <- bind_rows(tide_match_dfs) %>%
   select(dt, year, site, station, pr_tide, sec_tide, type, obs_type,
          staff, gpsunit, minmax, gps_pt, Latitude, Longitude,
          depth_m_raw, actual_pred, actual_ver, act_pred_disc_m, notes)
+
 
 # mix in the secondary tide station predictions
 minmax_2024_primary_secondary <- left_join(minmax_2024_primary, secondary_tides_clean, by = c('dt','sec_tide')) %>%
@@ -358,8 +352,8 @@ minmax_absent_2024_final <- minmax_absent_2024 %>%
 #merge tide corrected data and absent data together
 minmax_2024_final <- rbind(minmax_2024_almost_final, minmax_absent_2024_final)
 
-write.csv(minmax_2024_final, "K:/kelp/bull_kelp_kayak/2024/data_processing/min_max_depth/outputs/2024_minmax_corrected_raw.csv")
-write.csv(minmax_2024_final, 'K:/kelp/bull_kelp_kayak/2024/analysis/min_max_depth/data_raw/2024_minmax_corrected_raw.csv')
+#write.csv(minmax_2024_final, "K:/kelp/bull_kelp_kayak/2024/data_processing/min_max_depth/outputs/2024_minmax_corrected_raw.csv")
+#write.csv(minmax_2024_final, 'K:/kelp/bull_kelp_kayak/2024/analysis/min_max_depth/data_raw/2024_minmax_corrected_raw.csv')
 
 
 
